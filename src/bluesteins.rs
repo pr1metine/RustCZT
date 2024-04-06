@@ -57,6 +57,8 @@ impl<T: FftNum + Float> BluesteinsAlgorithm<T> {
             (0..m as i32).map(|k| w.powf(square_and_half(k))).collect()
         }
 
+        assert!(m <= n);
+
         let l = (m + n - 1).next_power_of_two();
 
         let fft_forward = fft_planner.plan_fft_forward(l);

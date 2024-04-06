@@ -72,6 +72,38 @@ fn test_unit_circle_contour_czt_accuracy() {
 }
 
 #[test]
+fn test_zoom_fft_accuracy() {
+    let signal = random_signal(64);
+    let a = Complex::from_polar(1.0, -1.0 * std::f64::consts::PI);
+    let w = Complex::from_polar(1.0, -2.0 * std::f64::consts::PI / (signal.len() - 1) as f64);
+
+    let expected = naive_czt(&signal, &a, &w);
+
+    let mut planner = CztPlanner::new();
+    let czt_obj = planner.plan_zoom_fft(signal.len(), -0.5, 0.5);
+    let mut actual = signal.clone();
+    czt_obj.process(&mut actual);
+
+    compare_float_vector(&expected, &actual);
+}
+
+#[test]
+fn test_partial_zoom_fft_accuracy() {
+    let signal = random_signal(64);
+    let a = Complex::from_polar(1.0, -1.0 * std::f64::consts::PI);
+    let w = Complex::from_polar(1.0, -2.0 * std::f64::consts::PI / (signal.len() - 1) as f64);
+
+    let expected = naive_czt(&signal, &a, &w);
+
+    let mut planner = CztPlanner::new();
+    let czt_obj = planner.plan_zoom_fft_with_m(signal.len(), 32, -0.5, 0.5);
+    let mut actual = signal.clone();
+    czt_obj.process(&mut actual);
+
+    compare_float_vector(&expected[..32], &actual[..32]);
+}
+
+#[test]
 fn test_fft_like_czt_accuracy() {
     let signal = random_signal(64);
     let mut planner = CztPlanner::new();
@@ -86,7 +118,7 @@ fn test_fft_like_czt_accuracy() {
 }
 
 #[test]
-fn test_partial_czt() {
+fn test_partial_czt_accuracy() {
     let signal = random_signal(64);
     let mut planner = CztPlanner::new();
     let a = Complex::from_polar(1.0, 0.0);

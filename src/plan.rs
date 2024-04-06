@@ -38,6 +38,18 @@ impl<T: Float + FftNum> CztPlanner<T> {
             ChosenCztPlanner::Scalar(planner) => planner.plan_zoom_fft(czt_len, start, end),
         }
     }
+
+    pub fn plan_zoom_fft_with_m(
+        &mut self,
+        n: usize,
+        m: usize,
+        start: T,
+        end: T,
+    ) -> Arc<dyn Czt<T>> {
+        match &mut self.chosen_planner {
+            ChosenCztPlanner::Scalar(planner) => planner.plan_zoom_fft_with_m(n, m, start, end),
+        }
+    }
 }
 
 pub struct CztPlannerScalar<T: Float + FftNum> {
