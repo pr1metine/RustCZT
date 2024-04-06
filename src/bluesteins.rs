@@ -3,7 +3,7 @@ use std::sync::Arc;
 use rustfft::{
     num_complex::Complex,
     num_traits::{Float, FromPrimitive, Zero},
-    Fft, FftNum,
+    Fft, FftNum, FftPlanner,
 };
 
 use crate::Czt;
@@ -16,7 +16,13 @@ pub struct BluesteinsAlgorithm<T: FftNum> {
 }
 
 impl<T: FftNum + Float> BluesteinsAlgorithm<T> {
-    pub fn new(czt_len: usize, a: Complex<T>, w: Complex<T>, fft_forward: Arc<dyn Fft<T>>) -> Self {
+    pub fn new(
+        n: usize,
+        m: usize,
+        a: Complex<T>,
+        w: Complex<T>,
+        fft_planner: &mut FftPlanner<T>,
+    ) -> Self {
         fn square_and_half<T>(n: i32) -> T
         where
             T: Float + FromPrimitive,
@@ -33,14 +39,16 @@ impl<T: FftNum + Float> BluesteinsAlgorithm<T> {
                 .collect()
         }
         fn compute_v_coefficients<T: Float + FftNum>(
+            l: usize,
+            m: usize,
             n: usize,
             w: Complex<T>,
             fft_forward: Arc<dyn Fft<T>>,
         ) -> Vec<Complex<T>> {
-            let mut out: Vec<_> = (0..n as i32)
+            let mut out: Vec<_> = (0..m as i32)
                 .map(|n| w.powf(-square_and_half::<T>(n)))
-                .chain([Complex::zero()])
-                .chain((n + 1..2 * n).map(|i| w.powf(-square_and_half::<T>((2 * n - i) as i32))))
+                .chain((m..l - n + 1).map(|_| Complex::zero()))
+                .chain((l - n + 1..l).map(|n| w.powf(-square_and_half::<T>((l - n) as i32))))
                 .collect();
             fft_forward.process(&mut out);
             out
@@ -49,9 +57,13 @@ impl<T: FftNum + Float> BluesteinsAlgorithm<T> {
             (0..m as i32).map(|k| w.powf(square_and_half(k))).collect()
         }
 
-        let y_coefficients = compute_y_coefficients(czt_len, a, w);
-        let v_coefficients = compute_v_coefficients(czt_len, w, fft_forward.clone());
-        let x_coefficients = compute_x_coefficients(czt_len, w);
+        let l = (m + n - 1).next_power_of_two();
+
+        let fft_forward = fft_planner.plan_fft_forward(l);
+
+        let y_coefficients = compute_y_coefficients(n, a, w);
+        let v_coefficients = compute_v_coefficients(l, m, n, w, fft_forward.clone());
+        let x_coefficients = compute_x_coefficients(m, w);
 
         Self {
             y_coefficients,
@@ -62,16 +74,32 @@ impl<T: FftNum + Float> BluesteinsAlgorithm<T> {
     }
 }
 
+impl<T: FftNum> BluesteinsAlgorithm<T> {
+    fn m(&self) -> usize {
+        self.x_coefficients.len()
+    }
+
+    fn n(&self) -> usize {
+        self.y_coefficients.len()
+    }
+
+    fn l(&self) -> usize {
+        self.fft_forward.len()
+    }
+}
+
 impl<T: FftNum> Czt<T> for BluesteinsAlgorithm<T> {
     fn process_with_scratch(&self, buffer: &mut [Complex<T>], scratch: &mut [Complex<T>]) {
-        let (expanded_buffer, scratch) =
-            scratch.split_at_mut(self.fft_forward.get_inplace_scratch_len());
+        assert_eq!(buffer.len(), self.n());
+        assert_eq!(scratch.len(), self.get_scratch_len());
+
+        let (expanded_buffer, scratch) = scratch.split_at_mut(self.l());
 
         // Perform step one of CZT: y_n = x_n * A^-n * W ^ (n^2 / 2)
-        for i in 0..buffer.len() {
+        for i in 0..self.n() {
             expanded_buffer[i] = buffer[i] * self.y_coefficients[i];
         }
-        for i in buffer.len()..buffer.len() * 2 {
+        for i in self.n()..self.l() {
             expanded_buffer[i] = Complex::zero();
         }
 
@@ -79,22 +107,22 @@ impl<T: FftNum> Czt<T> for BluesteinsAlgorithm<T> {
         self.fft_forward
             .process_with_scratch(expanded_buffer, scratch);
 
-        for i in 0..expanded_buffer.len() {
+        for i in 0..self.l() {
             expanded_buffer[i] = (expanded_buffer[i] * self.v_coefficients[i]).conj();
         }
 
         self.fft_forward
             .process_with_scratch(expanded_buffer, scratch);
 
-        let n = T::from_usize(self.fft_forward.len().into()).unwrap();
+        let l = T::from_usize(self.l()).unwrap();
 
         // Perform step three of CZT
-        for i in 0..buffer.len() {
-            buffer[i] = expanded_buffer[i].conj() * self.x_coefficients[i] / n;
+        for i in 0..self.m() {
+            buffer[i] = expanded_buffer[i].conj() * self.x_coefficients[i] / l;
         }
     }
 
     fn get_scratch_len(&self) -> usize {
-        self.fft_forward.get_inplace_scratch_len() * 2
+        self.fft_forward.get_inplace_scratch_len() + self.l()
     }
 }

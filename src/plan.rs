@@ -21,12 +21,13 @@ impl<T: Float + FftNum> CztPlanner<T> {
 
     pub fn plan_czt_forward(
         &mut self,
-        czt_len: usize,
+        n: usize,
+        m: usize,
         a: Complex<T>,
         w: Complex<T>,
     ) -> Arc<dyn Czt<T>> {
         match &mut self.chosen_planner {
-            ChosenCztPlanner::Scalar(planner) => planner.plan_czt_forward(czt_len, a, w),
+            ChosenCztPlanner::Scalar(planner) => planner.plan_czt_forward(n, m, a, w),
         }
     }
 }
@@ -52,23 +53,33 @@ impl<T: Float + FftNum> CztPlannerScalar<T> {
 
     pub fn plan_czt_forward(
         &mut self,
-        czt_len: usize,
+        n: usize,
+        m: usize,
         a: Complex<T>,
         w: Complex<T>,
     ) -> Arc<dyn Czt<T>> {
-        let fft_forward = self.fft_planner.plan_fft_forward(czt_len * 2);
-        Arc::new(BluesteinsAlgorithm::new(czt_len, a, w, fft_forward))
+        Arc::new(BluesteinsAlgorithm::new(n, m, a, w, &mut self.fft_planner))
     }
 }
 
 impl<T: FftNum + Float> CztPlannerScalar<T> {
     pub fn plan_zoom_fft(&mut self, czt_len: usize, start: T, end: T) -> Arc<dyn Czt<T>> {
+        self.plan_zoom_fft_with_m(czt_len, czt_len, start, end)
+    }
+
+    pub fn plan_zoom_fft_with_m(
+        &mut self,
+        n: usize,
+        m: usize,
+        start: T,
+        end: T,
+    ) -> Arc<dyn Czt<T>> {
         let one = T::from_f64(1.0).unwrap();
         let two_pi = T::from_f64(std::f64::consts::PI * 2.0).unwrap();
-        let n_minus_one = T::from_usize(czt_len - 1).unwrap();
+        let n_minus_one = T::from_usize(n - 1).unwrap();
         let a = Complex::from_polar(one, two_pi * start);
         let w = Complex::from_polar(one, -two_pi * (end - start) / n_minus_one);
 
-        self.plan_czt_forward(czt_len, a, w)
+        self.plan_czt_forward(n, m, a, w)
     }
 }

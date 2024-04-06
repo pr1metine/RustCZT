@@ -1,3 +1,5 @@
+//! # RustCZT
+//!
 use rustfft::{num_complex::Complex, num_traits::Zero, FftNum};
 
 pub mod bluesteins;

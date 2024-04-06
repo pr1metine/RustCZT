@@ -18,7 +18,7 @@ const RNG_SEED: [u8; 32] = [
 /// Chirp Z transform
 ///
 /// Implementation is O(n^2) and is simply looping over the expression.
-fn czt<T>(buffer: &[Complex<T>], a: &Complex<T>, w: &Complex<T>) -> Vec<Complex<T>>
+fn naive_czt<T>(buffer: &[Complex<T>], a: &Complex<T>, w: &Complex<T>) -> Vec<Complex<T>>
 where
     T: FftNum,
 {
@@ -63,11 +63,11 @@ fn test_unit_circle_contour_czt_accuracy() {
     let mut planner = CztPlanner::new();
     let a = Complex::from_polar(1.0, 5.0);
     let w = Complex::from_polar(1.0, -1.0 * std::f64::consts::PI / signal.len() as f64);
-    let czt_obj = planner.plan_czt_forward(signal.len(), a, w);
+    let czt_obj = planner.plan_czt_forward(signal.len(), signal.len(), a, w);
 
     let mut actual = signal.clone();
     czt_obj.process(&mut actual);
-    let expected = czt(&signal, &a, &w);
+    let expected = naive_czt(&signal, &a, &w);
     compare_float_vector(&expected, &actual);
 }
 
@@ -77,12 +77,27 @@ fn test_fft_like_czt_accuracy() {
     let mut planner = CztPlanner::new();
     let a = Complex::from_polar(1.0, 0.0);
     let w = Complex::from_polar(1.0, -2.0 * std::f64::consts::PI / signal.len() as f64);
-    let czt_obj = planner.plan_czt_forward(signal.len(), a, w);
+    let czt_obj = planner.plan_czt_forward(signal.len(), signal.len(), a, w);
 
     let mut actual = signal.clone();
     czt_obj.process(&mut actual);
-    let expected = czt(&signal, &a, &w);
+    let expected = naive_czt(&signal, &a, &w);
     compare_float_vector(&expected, &actual);
+}
+
+#[test]
+fn test_partial_czt() {
+    let signal = random_signal(64);
+    let mut planner = CztPlanner::new();
+    let a = Complex::from_polar(1.0, 0.0);
+    let w = Complex::from_polar(1.0, -2.0 * std::f64::consts::PI / signal.len() as f64);
+    let czt_obj = planner.plan_czt_forward(signal.len(), 32, a, w);
+
+    let mut actual = signal.clone();
+    czt_obj.process(&mut actual);
+    let expected = naive_czt(&signal, &a, &w);
+
+    compare_float_vector(&expected[..32], &actual[..32]);
 }
 
 #[test]
@@ -96,6 +111,6 @@ fn test_naive_czt_accuracy() {
 
     let a = Complex::new(1.0, 0.0);
     let w = Complex::from_polar(1.0, -2.0 * std::f64::consts::PI / signal.len() as f64);
-    let expected = czt(&signal, &a, &w);
+    let expected = naive_czt(&signal, &a, &w);
     compare_float_vector(&expected, &actual);
 }
